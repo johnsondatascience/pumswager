@@ -1,19 +1,18 @@
-# ACS PUMS Data Collector
+# PUMS Wage Estimator
 
-A Python application that collects American Community Survey (ACS) Public Use Microdata Sample (PUMS) data from the Census Bureau API and stores it in a PostgreSQL database.
+A Python application that collects American Community Survey (ACS) Public Use Microdata Sample (PUMS) data from the Census Bureau API and provides wage predictions using machine learning.
 
 ## Features
 
-- **Dockerized PostgreSQL database** for data storage
 - **Census API integration** for fetching PUMS data
 - **Person-level data collection** (demographics, employment, income)
 - **Household-level data collection** (housing characteristics, costs)
-- **Job tracking** for monitoring collection progress
-- **Upsert support** to handle duplicate records gracefully
+- **ML-based wage prediction** using Gradient Boosting
+- **Interactive web application** for wage estimation
+- **Comprehensive codebook** for PUMS variable labels
 
 ## Prerequisites
 
-- Docker and Docker Compose
 - Python 3.9+
 - Census API key (free, get one at https://api.census.gov/data/key_signup.html)
 
@@ -47,21 +46,13 @@ cp .env.example .env     # Linux/Mac
 # Edit .env and add your Census API key
 ```
 
-### 3. Start Database
-
-```bash
-docker-compose up -d
-```
-
-The database will be initialized automatically with the required schema.
-
-### 4. Verify Setup
+### 3. Verify Setup
 
 ```bash
 python main.py --check
 ```
 
-### 5. Collect Data
+### 4. Collect Data
 
 ```bash
 # Collect all data for California (state code 06)
@@ -81,7 +72,7 @@ python main.py --collect all --year 2021 --states 06
 
 | Command | Description |
 |---------|-------------|
-| `--check` | Verify database and API connectivity |
+| `--check` | Verify API connectivity |
 | `--list-states` | Show available FIPS state codes |
 | `--collect person` | Collect person-level data |
 | `--collect household` | Collect household-level data |
@@ -89,55 +80,42 @@ python main.py --collect all --year 2021 --states 06
 | `--states CODE [CODE ...]` | Specify state codes (default: all states) |
 | `--year YEAR` | Specify survey year (default: 2022) |
 
-## Database Schema
-
-### `pums_person` - Person-level records
-- Demographics: age, sex, race, Hispanic origin, citizenship
-- Education: educational attainment
-- Employment: status, class of worker, occupation, industry
-- Income: wages, self-employment, total income, benefits
-- Weight: person weight for statistical analysis
-
-### `pums_household` - Household-level records
-- Housing: type, building, tenure, rooms, year built
-- Composition: number of persons, household type, children
-- Income: household and family income
-- Costs: rent, owner costs, cost burden percentages
-- Weight: housing unit weight for statistical analysis
-
-### `collection_jobs` - Job tracking
-- Tracks status of each collection job
-- Records count and any errors
-
 ## Project Structure
 
 ```
 pumswager/
-├── docker-compose.yml      # Docker configuration
-├── init_db/
-│   └── 01_create_schema.sql  # Database initialization
-├── src/
-│   ├── __init__.py
-│   ├── config.py           # Configuration management
-│   ├── database.py         # Database connection
-│   ├── models.py           # SQLAlchemy ORM models
-│   ├── census_api.py       # Census API client
-│   └── collector.py        # Data collection orchestrator
-├── main.py                 # CLI entry point
-├── requirements.txt        # Python dependencies
-├── .env.example            # Environment template
-└── README.md
+├── app/                      # Web application
+│   ├── main.py               # FastAPI application
+│   ├── dash_app.py           # Dash dashboard
+│   ├── prediction_service.py # ML prediction service
+│   └── frontend/             # Static frontend files
+├── src/                      # Core library
+│   ├── config.py             # Configuration management
+│   ├── census_api.py         # Census API client
+│   ├── codebook.py           # PUMS variable codebook
+│   └── file_collector.py     # File-based data collector
+├── analysis/                 # Data analysis modules
+│   ├── code_mappings.py      # Code to label mappings
+│   └── explore_data.py       # Data exploration utilities
+├── scripts/                  # Utility scripts
+│   ├── train_model.py        # Standalone model training
+│   └── download_codebook.py  # Download PUMS data dictionary
+├── tests/                    # Test suite
+│   ├── test_codebook.py      # Codebook module tests
+│   └── test_webapp.py        # Web app component tests
+├── notebooks/                # Jupyter notebooks for analysis
+├── models/                   # Trained ML models
+├── data/                     # Data files (gitignored)
+├── main.py                   # CLI entry point
+├── run_webapp.py             # Web app entry point
+├── requirements.txt          # Python dependencies
+└── .env.example              # Environment template
 ```
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `POSTGRES_HOST` | Database host | `localhost` |
-| `POSTGRES_PORT` | Database port | `5432` |
-| `POSTGRES_USER` | Database user | `pums_user` |
-| `POSTGRES_PASSWORD` | Database password | `pums_password` |
-| `POSTGRES_DB` | Database name | `pums_db` |
 | `CENSUS_API_KEY` | Census Bureau API key | (required) |
 | `ACS_YEAR` | Default survey year | `2022` |
 
@@ -210,7 +188,6 @@ decoded = decode_record(record)
 The Census API has rate limits. The application includes:
 - Automatic retry with exponential backoff
 - 120-second timeout for large requests
-- Batch inserts to minimize database load
 
 ## Wage Prediction Web Application
 

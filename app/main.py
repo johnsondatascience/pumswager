@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any, List
 from pathlib import Path
 import logging
 
-from prediction_service import (
+from app.prediction_service import (
     WagePredictionService,
     PredictionInput,
     get_prediction_service,
@@ -106,6 +106,7 @@ class OptionsResponse(BaseModel):
     sex: Dict[int, str]
     education_levels: List[str]
     class_of_worker: Dict[int, str]
+    fields_of_degree: Dict[str, str]
 
 
 # API Endpoints
@@ -138,7 +139,8 @@ async def get_options():
         states=options['states'],
         sex={int(k): v for k, v in options['sex'].items()},
         education_levels=options['education_levels'],
-        class_of_worker={int(k): v for k, v in options['class_of_worker'].items()}
+        class_of_worker={int(k): v for k, v in options['class_of_worker'].items()},
+        fields_of_degree=options['fields_of_degree'],
     )
 
 

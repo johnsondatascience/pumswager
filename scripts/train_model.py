@@ -2,6 +2,9 @@
 Simple Model Training Script for PUMS Wage Prediction
 
 Run this before starting the Dash app to train the prediction model.
+
+Usage:
+    python scripts/train_model.py
 """
 
 import pandas as pd
@@ -11,12 +14,12 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from lightgbm import LGBMRegressor
 import sys
 
-# Paths
-BASE_DIR = Path(__file__).parent
+# Paths - handle running from scripts/ or project root
+BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / 'data'
 MODELS_DIR = BASE_DIR / 'models'
 MODELS_DIR.mkdir(exist_ok=True)
@@ -95,7 +98,7 @@ def train_model():
     y = df_model['log_wagp']
     weights = df_model['pwgtp']
     
-    # Split
+    # Split (preserve survey weights for train/test)
     print("\nSplitting data...")
     X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
         X, y, weights, test_size=0.2, random_state=42
@@ -116,27 +119,32 @@ def train_model():
     print(f"Processed features: {X_train_processed.shape[1]}")
     
     # Train model
-    print("\nTraining Gradient Boosting model...")
+    print("\nTraining LightGBM model...")
     print("(This may take a few minutes)")
     
-    model = GradientBoostingRegressor(
-        n_estimators=100,
-        max_depth=5,
+    model = LGBMRegressor(
+        n_estimators=500,
+        learning_rate=0.05,
+        num_leaves=31,
+        max_depth=-1,
+        subsample=0.8,
+        colsample_bytree=0.8,
         random_state=42,
-        verbose=1
+        n_jobs=-1
     )
-    model.fit(X_train_processed, y_train)
+    # Fit with survey weights
+    model.fit(X_train_processed, y_train, sample_weight=w_train)
     
-    # Evaluate
-    print("\nEvaluating model...")
+    # Evaluate with survey weights
+    print("\nEvaluating model (survey-weighted)...")
     y_pred = model.predict(X_test_processed)
     
     y_test_actual = np.expm1(y_test)
     y_pred_actual = np.expm1(y_pred)
     
-    r2 = r2_score(y_test, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_test_actual, y_pred_actual))
-    mae = mean_absolute_error(y_test_actual, y_pred_actual)
+    r2 = r2_score(y_test, y_pred, sample_weight=w_test)
+    rmse = np.sqrt(mean_squared_error(y_test_actual, y_pred_actual, sample_weight=w_test))
+    mae = mean_absolute_error(y_test_actual, y_pred_actual, sample_weight=w_test)
     
     print("\n" + "=" * 60)
     print("MODEL PERFORMANCE")
@@ -154,27 +162,17 @@ def train_model():
     joblib.dump(model, model_path)
     joblib.dump(preprocessor, preprocessor_path)
     
-    # Save metadata
-    from dataclasses import dataclass
+    # Save metadata as a simple dict (pickle-safe)
     from datetime import datetime
-    
-    @dataclass
-    class ModelMetadata:
-        model_type: str
-        r2_score: float
-        rmse: float
-        mae: float
-        sample_size: int
-        training_date: str
-    
-    metadata = ModelMetadata(
-        model_type='gradient_boosting',
-        r2_score=r2,
-        rmse=rmse,
-        mae=mae,
-        sample_size=len(df_model),
-        training_date=datetime.now().isoformat()
-    )
+
+    metadata = {
+        'model_type': 'lightgbm',
+        'r2_score': float(r2),
+        'rmse': float(rmse),
+        'mae': float(mae),
+        'sample_size': int(len(df_model)),
+        'training_date': datetime.now().isoformat(),
+    }
     joblib.dump(metadata, MODELS_DIR / 'wage_metadata_default.joblib')
     
     print(f"\nModel saved to: {model_path}")
@@ -182,8 +180,8 @@ def train_model():
     print("\n" + "=" * 60)
     print("TRAINING COMPLETE!")
     print("=" * 60)
-    print("\nYou can now run the Dash app:")
-    print("  python app/dash_app.py")
+    print("\nYou can now run the web app:")
+    print("  python run_webapp.py")
     
     return True
 

@@ -19,6 +19,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from lightgbm import LGBMRegressor
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
@@ -192,7 +193,7 @@ class WagePredictionService:
         
         Args:
             subset_criteria: Optional filtering criteria for data subset
-            model_type: 'gradient_boosting', 'random_forest', or 'ridge'
+            model_type: 'gradient_boosting', 'random_forest', 'ridge', or 'lightgbm'
             min_records: Minimum number of records required for training
             use_sample_weights: Whether to use survey weights in training
             
@@ -249,6 +250,17 @@ class WagePredictionService:
         if model_type == 'gradient_boosting':
             self.model = GradientBoostingRegressor(
                 n_estimators=100, max_depth=5, random_state=42
+            )
+        elif model_type == 'lightgbm':
+            self.model = LGBMRegressor(
+                n_estimators=500,
+                learning_rate=0.05,
+                num_leaves=31,
+                max_depth=-1,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                random_state=42,
+                n_jobs=-1
             )
         elif model_type == 'random_forest':
             self.model = RandomForestRegressor(
@@ -335,7 +347,22 @@ class WagePredictionService:
         self.preprocessor = joblib.load(preprocessor_path)
         
         if metadata_path.exists():
-            self.metadata = joblib.load(metadata_path)
+            loaded_meta = joblib.load(metadata_path)
+            # Support both dict-based metadata (from scripts/train_model.py)
+            # and ModelMetadata instances
+            if isinstance(loaded_meta, dict):
+                self.metadata = ModelMetadata(
+                    model_type=loaded_meta.get('model_type', 'unknown'),
+                    r2_score=float(loaded_meta.get('r2_score', 0.0)),
+                    rmse=float(loaded_meta.get('rmse', 0.0)),
+                    mae=float(loaded_meta.get('mae', 0.0)),
+                    sample_size=int(loaded_meta.get('sample_size', 0)),
+                    training_date=str(loaded_meta.get('training_date', 'unknown')),
+                    feature_names=list(loaded_meta.get('feature_names', [])),
+                    subset_criteria=loaded_meta.get('subset_criteria'),
+                )
+            else:
+                self.metadata = loaded_meta
         else:
             # Create minimal metadata for legacy models
             self.metadata = ModelMetadata(
@@ -345,7 +372,7 @@ class WagePredictionService:
                 mae=0.0,
                 sample_size=0,
                 training_date='unknown',
-                feature_names=[]
+                feature_names=[],
             )
         
         logger.info(f"Model loaded from {model_path}")
@@ -396,7 +423,7 @@ class WagePredictionService:
         wage_pred = np.expm1(log_wage_pred)
         
         # Estimate confidence interval (rough approximation using model MAE)
-        mae = self.metadata.mae if self.metadata else 30000
+        mae = getattr(self.metadata, 'mae', 30000) if self.metadata else 30000
         ci_low = max(0, wage_pred - 1.5 * mae)
         ci_high = wage_pred + 1.5 * mae
         
@@ -404,8 +431,8 @@ class WagePredictionService:
             predicted_wage=float(wage_pred),
             confidence_interval_low=float(ci_low),
             confidence_interval_high=float(ci_high),
-            model_r2=self.metadata.r2_score if self.metadata else 0.0,
-            sample_size=self.metadata.sample_size if self.metadata else 0,
+            model_r2=getattr(self.metadata, 'r2_score', 0.0) if self.metadata else 0.0,
+            sample_size=getattr(self.metadata, 'sample_size', 0) if self.metadata else 0,
             features_used=self.numeric_features + self.categorical_features
         )
     

@@ -38,7 +38,19 @@ Thumbs.db
 
 # Logs
 *.log
+training_log.txt
 
 # Data files (too large for git)
 data/*.csv
 data/*.txt
+
+# Temporary output files
+*_output.txt
+test_results.txt
+simple_output.txt
+
+# AI/IDE folders
+.claude/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
